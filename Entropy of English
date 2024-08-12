@@ -1,0 +1,112 @@
+import math
+import requests
+import re
+from collections import Counter
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.stats import entropy as scipy_entropy
+
+class TextAnalyzer:
+    def __init__(self, text):
+        self.original_text = text
+        self.processed_text = self.preprocess_text(text)
+        self.char_counts = Counter(self.processed_text)
+        self.word_counts = Counter(self.processed_text.split())
+        self.total_chars = sum(self.char_counts.values())
+        self.total_words = sum(self.word_counts.values())
+
+    @staticmethod
+    def preprocess_text(text):
+        # Convert to lowercase and remove non-alphanumeric characters
+        return re.sub(r'[^a-z0-9\s]', '', text.lower())
+
+    def calculate_char_entropy(self):
+        probabilities = [count / self.total_chars for count in self.char_counts.values()]
+        return scipy_entropy(probabilities, base=2)
+
+    def calculate_word_entropy(self):
+        probabilities = [count / self.total_words for count in self.word_counts.values()]
+        return scipy_entropy(probabilities, base=2)
+
+    def calculate_conditional_entropy(self, context_length=1):
+        context_counts = Counter()
+        char_context_counts = Counter()
+
+        for i in range(len(self.processed_text) - context_length):
+            context = self.processed_text[i:i+context_length]
+            char = self.processed_text[i+context_length]
+            context_counts[context] += 1
+            char_context_counts[(context, char)] += 1
+
+        conditional_entropy = 0
+        for context, count in context_counts.items():
+            char_probs = [char_context_counts[(context, char)] / count 
+                          for char in set(char for (ctx, char) in char_context_counts if ctx == context)]
+            conditional_entropy += count / self.total_chars * scipy_entropy(char_probs, base=2)
+
+        return conditional_entropy
+
+    def plot_zipf_distribution(self):
+        word_freqs = sorted(self.word_counts.values(), reverse=True)
+        ranks = range(1, len(word_freqs) + 1)
+
+        plt.figure(figsize=(10, 6))
+        plt.loglog(ranks, word_freqs, 'b.')
+        plt.xlabel('Rank')
+        plt.ylabel('Frequency')
+        plt.title("Zipf's Law Distribution")
+        plt.grid(True)
+        plt.show()
+
+    def generate_markov_text(self, length=100, context_length=2):
+        text = self.processed_text[:context_length]
+        for _ in range(length - context_length):
+            context = text[-context_length:]
+            possible_chars = [char for (ctx, char) in self.char_counts if ctx == context]
+            if not possible_chars:
+                text += ' '
+            else:
+                next_char = np.random.choice(possible_chars)
+                text += next_char
+        return text
+
+def download_gutenberg_book(url):
+    response = requests.get(url)
+    return response.text
+
+def extract_book_content(book_text):
+    start_marker = "*** START OF THE PROJECT GUTENBERG EBOOK"
+    end_marker = "*** END OF THE PROJECT GUTENBERG EBOOK"
+    start_index = book_text.find(start_marker) + len(start_marker)
+    end_index = book_text.find(end_marker)
+    return book_text[start_index:end_index].strip()
+
+# Download and process the book
+book_url = "https://www.gutenberg.org/files/1342/1342-0.txt"  # Pride and Prejudice :)
+book_text = download_gutenberg_book(book_url)
+book_content = extract_book_content(book_text)
+
+# Analyze the book
+analyzer = TextAnalyzer(book_content)
+
+print(f"Character Entropy: {analyzer.calculate_char_entropy():.4f} bits")
+print(f"Word Entropy: {analyzer.calculate_word_entropy():.4f} bits")
+print(f"Conditional Entropy (context length 1): {analyzer.calculate_conditional_entropy(1):.4f} bits")
+print(f"Conditional Entropy (context length 2): {analyzer.calculate_conditional_entropy(2):.4f} bits")
+
+# Plot Zipf's distribution
+analyzer.plot_zipf_distribution()
+
+# Generate Markov text
+markov_text = analyzer.generate_markov_text(length=200, context_length=3)
+print("\nGenerated Markov Text:")
+print(markov_text)
+
+# Compare with modern English
+modern_sample = """
+The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.
+How vexingly quick daft zebras jump! The five boxing wizards jump quickly.
+"""
+modern_analyzer = TextAnalyzer(modern_sample)
+print(f"\nModern English Character Entropy: {modern_analyzer.calculate_char_entropy():.4f} bits")
+print(f"Modern English Word Entropy: {modern_analyzer.calculate_word_entropy():.4f} bits")
