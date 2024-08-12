@@ -1,0 +1,64 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Parameters
+num_neurons = 5
+time = 100  # total time in ms
+dt = 1  # time step in ms
+time_steps = int(time / dt)
+
+# Neuron parameters
+tau_m = 20.0  # membrane time constant in ms
+R = 1.0  # resistance in MOhm
+V_reset = 0  # reset potential
+V_th = 1.0  # threshold potential
+V_rest = 0.0  # resting potential
+
+# Initialize variables
+V = np.zeros((num_neurons, time_steps))  # membrane potential
+spikes = np.zeros((num_neurons, time_steps))  # spike train
+input_current = np.zeros((num_neurons, time_steps))  # input current
+
+# Create random input current for each neuron
+for i in range(num_neurons):
+    input_current[i, 20:80] = np.random.uniform(0.5, 1.5, 60)  # random current
+
+# Simulation loop
+for t in range(1, time_steps):
+    for i in range(num_neurons):
+        # Update membrane potential
+        dV = (-(V[i, t-1] - V_rest) + R * input_current[i, t-1]) / tau_m * dt
+        V[i, t] = V[i, t-1] + dV
+        
+        # Check for spike
+        if V[i, t] >= V_th:
+            V[i, t] = V_reset  # reset potential
+            spikes[i, t] = 1  # record spike
+
+# Plotting
+plt.figure(figsize=(12, 8))
+
+# Plot membrane potentials
+for i in range(num_neurons):
+    plt.plot(V[i], label=f'Neuron {i+1}')
+
+plt.title('Membrane Potential of Neurons')
+plt.xlabel('Time (ms)')
+plt.ylabel('Membrane Potential (V)')
+plt.axhline(V_th, color='r', linestyle='--', label='Threshold')
+plt.axhline(V_reset, color='g', linestyle='--', label='Reset Potential')
+plt.legend()
+plt.grid()
+plt.show()
+
+# Plotting spikes
+plt.figure(figsize=(12, 4))
+for i in range(num_neurons):
+    plt.eventplot(np.where(spikes[i] == 1)[0], lineoffsets=i, colors='black', linelengths=0.8)
+
+plt.title('Spike Trains of Neurons')
+plt.xlabel('Time (ms)')
+plt.ylabel('Neuron Index')
+plt.yticks(range(num_neurons), [f'Neuron {i+1}' for i in range(num_neurons)])
+plt.grid()
+plt.show()
