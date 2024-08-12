@@ -1,0 +1,139 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+from mpl_toolkits.mplot3d import Axes3D
+
+## Constants
+G0 = 9.81  # Gravitational acceleration at sea level (m/s^2)
+R_EARTH = 6371000  # Earth's radius (m)
+RHO_0 = 1.225  # Air density at sea level (kg/m^3)
+H = 7400  # Scale height for atmospheric model (m)
+CD = 0.5  # Drag coefficient (dimensionless)
+OMEGA_EARTH = 7.2921159e-5  # Earth's angular velocity (rad/s)
+
+## Rocket parameters
+INITIAL_MASS = 5000  # Initial mass of the rocket (kg)
+FUEL_MASS = 3000  # Mass of fuel (kg)
+BURN_RATE = 50  # Fuel burn rate (kg/s)
+AREA = 10  # Cross-sectional area of the rocket (m^2)
+THRUST = 100000  # Thrust of the rocket (N)
+BURN_TIME = FUEL_MASS / BURN_RATE  # Burn time of the rocket (s)
+
+def air_density(altitude):
+    """Calculate air density at a given altitude."""
+    return RHO_0 * np.exp(-altitude / H)
+
+def gravity(r):
+    """Calculate gravitational acceleration at a given radius."""
+    return G0 * (R_EARTH / r)**2
+
+def mass(t):
+    """Calculate rocket mass at a given time."""
+    return INITIAL_MASS - BURN_RATE * min(t, BURN_TIME)
+
+def rocket_dynamics(t, state):
+    x, y, z, vx, vy, vz = state
+    
+    # Current position, velocity, and mass
+    r = np.sqrt(x**2 + y**2 + z**2)
+    v = np.sqrt(vx**2 + vy**2 + vz**2)
+    m = mass(t)
+    
+    # Gravity
+    g = gravity(r)
+    gx, gy, gz = -g * x / r, -g * y / r, -g * z / r
+    
+    # Air density and drag
+    altitude = r - R_EARTH
+    rho = air_density(altitude)
+    drag = 0.5 * rho * v**2 * CD * AREA
+    drag_x = -drag * vx / v if v > 0 else 0
+    drag_y = -drag * vy / v if v > 0 else 0
+    drag_z = -drag * vz / v if v > 0 else 0
+    
+    # Thrust (assuming it's aligned with the rocket's velocity)
+    thrust_magnitude = THRUST if t < BURN_TIME else 0
+    thrust_x = thrust_magnitude * vx / v if v > 0 else 0
+    thrust_y = thrust_magnitude * vy / v if v > 0 else 0
+    thrust_z = thrust_magnitude * vz / v if v > 0 else 0
+    
+    # Coriolis and centrifugal forces due to Earth's rotation
+    coriolis_x = 2 * OMEGA_EARTH * vy
+    coriolis_y = -2 * OMEGA_EARTH * vx
+    centrifugal_x = OMEGA_EARTH**2 * x
+    centrifugal_y = OMEGA_EARTH**2 * y
+    
+    # Accelerations
+    ax = (thrust_x + drag_x) / m + gx + coriolis_x + centrifugal_x
+    ay = (thrust_y + drag_y) / m + gy + coriolis_y + centrifugal_y
+    az = (thrust_z + drag_z) / m + gz
+    
+    return [vx, vy, vz, ax, ay, az]
+
+## Time array
+t_span = (0, 500)
+t_eval = np.linspace(*t_span, 1000)
+
+## Initial conditions
+x0, y0, z0 = R_EARTH, 0, 0  # Initial position (on Earth's surface at the equator)
+v0 = 10  # Initial velocity magnitude
+azimuth = np.radians(90)  # Launch azimuth (0 = North, 90 = East)
+elevation = np.radians(85)  # Launch elevation angle
+vx0 = v0 * np.cos(elevation) * np.sin(azimuth)
+vy0 = v0 * np.cos(elevation) * np.cos(azimuth)
+vz0 = v0 * np.sin(elevation)
+initial_state = [x0, y0, z0, vx0, vy0, vz0]
+
+## Solve ODE
+solution = solve_ivp(rocket_dynamics, t_span, initial_state, t_eval=t_eval, method='RK45')
+
+## Extract results
+t = solution.t
+x, y, z, vx, vy, vz = solution.y
+
+## Calculate additional parameters
+r = np.sqrt(x**2 + y**2 + z**2)
+altitude = (r - R_EARTH) / 1000  # km
+velocity = np.sqrt(vx**2 + vy**2 + vz**2)
+acceleration = np.sqrt(np.diff(vx)**2 + np.diff(vy)**2 + np.diff(vz)**2) / np.diff(t)
+
+## Plot results
+fig = plt.figure(figsize=(20, 15))
+
+# 3D Trajectory
+ax1 = fig.add_subplot(221, projection='3d')
+ax1.plot(x/1000, y/1000, z/1000)
+ax1.set_title("3D Trajectory")
+ax1.set_xlabel("X (km)")
+ax1.set_ylabel("Y (km)")
+ax1.set_zlabel("Z (km)")
+
+# Altitude vs Time
+ax2 = fig.add_subplot(222)
+ax2.plot(t, altitude)
+ax2.set_title("Altitude vs Time")
+ax2.set_xlabel("Time (s)")
+ax2.set_ylabel("Altitude (km)")
+
+# Velocity vs Time
+ax3 = fig.add_subplot(223)
+ax3.plot(t, velocity)
+ax3.set_title("Velocity vs Time")
+ax3.set_xlabel("Time (s)")
+ax3.set_ylabel("Velocity (m/s)")
+
+# Acceleration vs Time
+ax4 = fig.add_subplot(224)
+ax4.plot(t[1:], acceleration)
+ax4.set_title("Acceleration vs Time")
+ax4.set_xlabel("Time (s)")
+ax4.set_ylabel("Acceleration (m/s²)")
+
+plt.tight_layout()
+plt.show()
+
+## Print max altitude and range
+max_altitude = max(altitude)
+ground_distance = np.sqrt((x[-1] - x[0])**2 + (y[-1] - y[0])**2) / 1000
+print(f"Maximum altitude: {max_altitude:.2f} km")
+print(f"Ground distance traveled: {ground_distance:.2f} km")
