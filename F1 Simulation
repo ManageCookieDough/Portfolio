@@ -1,0 +1,139 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+
+class Weather:
+    def __init__(self, initial_condition):
+        self.condition = initial_condition  # 'Dry', 'Wet', or 'Intermediate'
+        self.temperature = random.uniform(15, 35)  # Track temperature in Celsius
+
+    def update(self):
+        if random.random() < 0.1:  # 10% chance of weather change each lap
+            self.condition = random.choice(['Dry', 'Wet', 'Intermediate'])
+        self.temperature += random.uniform(-1, 1)  # Slight temperature changes
+        self.temperature = max(min(self.temperature, 40), 10)  # Keep temperature in realistic range
+
+class Tyre:
+    def __init__(self, compound, initial_performance):
+        self.compound = compound
+        self.performance = initial_performance
+        self.age = 0
+        self.optimal_temp = {'Soft': 90, 'Medium': 85, 'Hard': 80, 'Wet': 70, 'Intermediate': 75}
+
+    def degrade(self, lap_stress, weather):
+        self.age += 1
+        weather_factor = 1
+        if weather.condition == 'Wet' and self.compound not in ['Wet', 'Intermediate']:
+            weather_factor = 2  # Increased degradation in wet conditions for dry tyres
+        elif weather.condition == 'Dry' and self.compound in ['Wet', 'Intermediate']:
+            weather_factor = 1.5  # Increased degradation for wet tyres in dry conditions
+        
+        temp_diff = abs(weather.temperature - self.optimal_temp[self.compound])
+        temp_factor = 1 + (temp_diff / 100)  # Temperature affects degradation
+        
+        self.performance -= lap_stress * weather_factor * temp_factor * (1 + (self.age / 20))
+
+class Driver:
+    def __init__(self, name, skill, racecraft, experience, awareness):
+        self.name = name
+        self.skill = skill  # Overall driving skill (0-100)
+        self.racecraft = racecraft  # Ability in wheel-to-wheel racing (0-100)
+        self.experience = experience  # Experience level (0-100)
+        self.awareness = awareness  # Awareness of surroundings, affects incident probability (0-100)
+
+class Track:
+    def __init__(self, base_lap_time, tyre_stress):
+        self.base_lap_time = base_lap_time
+        self.tyre_stress = tyre_stress
+
+class Incident:
+    def __init__(self, type, severity):
+        self.type = type  # 'Crash', 'Spin', 'Mechanical', etc.
+        self.severity = severity  # Time penalty in seconds
+
+def simulate_lap(driver, track, tyre, weather):
+    base_time = track.base_lap_time
+    tyre_factor = tyre.performance / 100
+    driver_skill = driver.skill / 100
+    weather_factor = 1 if weather.condition == 'Dry' else 1.2  # Wet conditions slow down the lap
+    
+    lap_time = base_time * (2 - tyre_factor) * (2 - driver_skill) * weather_factor
+    
+    # Check for incidents
+    if random.random() < (1 - driver.awareness / 100) * 0.01:  # Higher awareness, lower chance of incident
+        incident = Incident(random.choice(['Crash', 'Spin', 'Mechanical']), random.uniform(5, 30))
+        lap_time += incident.severity
+    
+    tyre.degrade(track.tyre_stress, weather)
+    
+    return lap_time
+
+def pit_stop_strategy(driver, laps, tyres, weather):
+    strategy = []
+    current_tyre = tyres[0]
+    for lap in range(laps):
+        if (current_tyre.performance < 50 and len(tyres) > 1) or \
+           (weather.condition != 'Dry' and current_tyre.compound not in ['Wet', 'Intermediate']):
+            current_tyre = tyres.pop(0)
+            strategy.append(('Pit', lap))
+        strategy.append((current_tyre.compound, lap))
+        weather.update()  # Update weather each lap
+    return strategy
+
+def plot_race_summary(strategy, weather_conditions):
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    
+    compounds = [s[0] for s in strategy if s[0] != 'Pit']
+    laps = [s[1] for s in strategy if s[0] != 'Pit']
+    
+    ax1.plot(laps, compounds, marker='o')
+    ax1.set_title('Tyre Strategy')
+    ax1.set_xlabel('Lap')
+    ax1.set_ylabel('Compound')
+    
+    weather_colors = {'Dry': 'yellow', 'Wet': 'blue', 'Intermediate': 'green'}
+    for i in range(len(weather_conditions) - 1):
+        ax2.axvspan(i, i+1, facecolor=weather_colors[weather_conditions[i]], alpha=0.3)
+    
+    ax2.set_title('Weather Conditions')
+    ax2.set_xlabel('Lap')
+    ax2.set_yticks([])
+    
+    plt.tight_layout()
+    plt.show()
+
+# Simulation execution
+if __name__ == "__main__":
+    # Initialize simulation components
+    track = Track(base_lap_time=90, tyre_stress=0.5)
+    driver = Driver("Lewis Hamilton", skill=95, racecraft=98, experience=100, awareness=95)
+    tyres = [Tyre("Soft", 100), Tyre("Medium", 100), Tyre("Hard", 100)]
+    weather = Weather("Dry")
+
+    # Run simulation
+    laps = 50
+    strategy = pit_stop_strategy(driver, laps, tyres, weather)
+    lap_times = []
+    weather_conditions = []
+
+    for lap in range(laps):
+        lap_time = simulate_lap(driver, track, tyres[0], weather)
+        lap_times.append(lap_time)
+        weather_conditions.append(weather.condition)
+        weather.update()
+
+    # Visualize results
+    plot_race_summary(strategy, weather_conditions)
+    plt.figure(figsize=(12, 6))
+    plt.plot(range(1, laps+1), lap_times)
+    plt.title('Lap Times')
+    plt.xlabel('Lap')
+    plt.ylabel('Time (seconds)')
+    plt.show()
+
+    # Print some summary statistics
+    print(f"Average lap time: {np.mean(lap_times):.2f} seconds")
+    print(f"Fastest lap: {min(lap_times):.2f} seconds")
+    print(f"Slowest lap: {max(lap_times):.2f} seconds")
+    print(f"Number of pit stops: {len([s for s in strategy if s[0] == 'Pit'])}")
